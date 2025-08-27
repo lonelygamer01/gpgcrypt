@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Check if input is provided
+if [ -z "$1" ]; then
+    echo "Usage: $0 encrypt|decrypt <file-or-folder>"
+    exit 1
+fi
+
+ACTION="$1"
+TARGET="$2"
+
+# Ensure target is provided
+if [ -z "$TARGET" ]; then
+    echo "Error: You must specify a file or folder."
+    exit 1
+fi
+
+# Encrypt Function
+encrypt() {
+    if [ -d "$TARGET" ]; then
+        # If it's a directory, create a tar archive
+        tar -cf "$TARGET.tar" "$TARGET"
+        gpg --symmetric --cipher-algo AES256 "$TARGET.tar"
+        shred -u "$TARGET.tar"  # Securely remove original tar
+        rm -rf "$TARGET"  # Remove original folder
+        echo "Folder encrypted as $TARGET.tar.gpg"
+    elif [ -f "$TARGET" ]; then
+        # If it's a file, encrypt directly
+        gpg --symmetric --cipher-algo AES256 "$TARGET"
+        shred -u "$TARGET"  # Securely remove original file
+        echo "File encrypted as $TARGET.gpg"
+    else
+        echo "Error: $TARGET is not a valid file or directory."
+        exit 1
+    fi
+}
+
+# Decrypt Function
+decrypt() {
+    # Clear GPG passphrase cache
+    gpgconf --kill gpg-agent
+    if [[ "$TARGET" == *.tar.gpg ]]; then
+        # If it's an encrypted folder (tar archive)
+        gpg --output "${TARGET%.gpg}" --decrypt "$TARGET"
+        tar -xf "${TARGET%.gpg}"
+        # Securely remove decrypted tar file
+        shred -u "${TARGET%.gpg}"
+        # Remove the encrypted .gpg file
+        rm -fr "$TARGET"
+        echo "Folder decrypted successfully."
+    elif [[ "$TARGET" == *.gpg ]]; then
+        # If it's an encrypted file
+        gpg --output "${TARGET%.gpg}" --decrypt "$TARGET"
+	rm -fr "$TARGET"
+        echo "File decrypted as ${TARGET%.gpg}"
+    else
+        echo "Error: Not a valid GPG-encrypted file."
+        exit 1
+    fi
+}
+
+# Run the appropriate function
+case "$ACTION" in
+    encrypt) encrypt ;;
+    decrypt) decrypt ;;
+    *) echo "Error: Invalid action. Use 'encrypt' or 'decrypt'." ;;
+esac
